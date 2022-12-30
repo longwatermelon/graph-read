@@ -36,7 +36,6 @@ int main(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
 
-
     // Load image
     int w, h;
     std::vector<std::array<unsigned char, 3>> imgdata;
@@ -56,6 +55,22 @@ int main(int argc, char **argv)
                             " " + std::to_string(y) + "0\n";
         }
     }
+
+    std::array<float, 1> vw;
+    vw.fill(0.f);
+    float b = 0.f;
+
+    for (size_t i = 0; i < 1000; ++i)
+    {
+        reg::general::descend<1>(vw, b, .1f, data,
+                [&](const std::array<float, 1> &vw,
+                    const std::array<float, 1> &vx,
+                    float b){
+            return vw[0] * vx[0] + b;
+        });
+    }
+
+    printf("%.2fx + %.2f\n", vw[0], b);
 
 #ifdef GRAPHICS
     SDL_Init(SDL_INIT_VIDEO);
