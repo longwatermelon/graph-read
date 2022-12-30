@@ -36,12 +36,6 @@ int main(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
 
-    SDL_Init(SDL_INIT_VIDEO);
-    SDL_Window *win = SDL_CreateWindow("Graph",
-            SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-            600, 600, SDL_WINDOW_SHOWN);
-    SDL_Renderer *rend = SDL_CreateRenderer(win, -1,
-            SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 
     // Load image
     int w, h;
@@ -49,18 +43,8 @@ int main(int argc, char **argv)
     load_image(imgdata, argv[1], w, h);
 
     // Setup graph & data points for regression
-    graph::Graph2 graph;
-    graph.add_shape(graph::Graph2Shape(
-        {
-            { 0.f, 0.f }, { 1.f, 1.f },
-            { 1.f, 0.f }, { 0.f, 1.f }
-        },
-        { 1.f, 0.f, 0.f }
-    ));
-    graph.set_shape_size(2.f);
-    std::string graph_config = "min 0 0\nmax 1 1\nstep .2 .2\n";
-
     std::vector<reg::DataPoint<1>> data;
+    std::string graph_config = "min 0 0\nmax 1 1\nstep .2 .2\n";
     for (size_t i = 0; i < imgdata.size(); ++i)
     {
         if (IS_BLACK(imgdata[i]))
@@ -72,6 +56,24 @@ int main(int argc, char **argv)
                             " " + std::to_string(y) + "0\n";
         }
     }
+
+#ifdef GRAPHICS
+    SDL_Init(SDL_INIT_VIDEO);
+    SDL_Window *win = SDL_CreateWindow("Graph",
+            SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+            600, 600, SDL_WINDOW_SHOWN);
+    SDL_Renderer *rend = SDL_CreateRenderer(win, -1,
+            SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+
+    graph::Graph2 graph;
+    graph.add_shape(graph::Graph2Shape(
+        {
+            { 0.f, 0.f }, { 1.f, 1.f },
+            { 1.f, 0.f }, { 0.f, 1.f }
+        },
+        { 1.f, 0.f, 0.f }
+    ));
+    graph.set_shape_size(2.f);
 
     graph.load(graph_config);
 
@@ -101,6 +103,8 @@ int main(int argc, char **argv)
     SDL_DestroyRenderer(rend);
     SDL_DestroyWindow(win);
     SDL_Quit();
+#endif
+
     return 0;
 }
 
