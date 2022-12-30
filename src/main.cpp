@@ -9,6 +9,21 @@ extern "C" {
 #define BLACK_THRESHOLD 50
 #define IS_BLACK(pix) (pix[0] <= BLACK_THRESHOLD && pix[1] <= BLACK_THRESHOLD && pix[2] <= BLACK_THRESHOLD)
 
+template <size_t N>
+struct Equation
+{
+    Equation()
+    {
+        vw.fill(0.f);
+        vx.fill(0.f);
+        xpows.fill(0.f);
+    }
+
+    std::array<float, N> vw, vx;
+    std::array<float, N> xpows;
+    float b{ 0.f };
+};
+
 bool load_image(std::vector<std::array<unsigned char, 3>> &image, const std::string &path, int &x, int &y)
 {
     int n;
@@ -28,6 +43,46 @@ bool load_image(std::vector<std::array<unsigned char, 3>> &image, const std::str
     return (data != nullptr);
 }
 
+// N: num terms
+template <size_t N>
+std::vector<Equation<N>> all_possible_powers(int maxp)
+{
+    std::vector<Equation<N>> equations;
+
+    if constexpr (N > 0)
+    {
+        std::vector<Equation<N - 1>> next_term_eqs = all_possible_powers<N - 1>(maxp);
+
+        // Each eq in next_term_eqs needs to be paired with every possible power
+        // of the current term
+        for (const auto &eq : next_term_eqs)
+        {
+            // Initialize base equation's xpows[0:N-1] whose
+            // last term power will be modified from [1,maxp]
+            Equation<N> e;
+            for (size_t j = 0; j < N - 1; ++j)
+                e.xpows[j] = eq.xpows[j];
+
+            for (int pow = 1; pow <= maxp; ++pow)
+            {
+                e.xpows[N - 1] = pow;
+                equations.emplace_back(e);
+            }
+        }
+    }
+
+    if (equations.empty())
+        equations.emplace_back(Equation<N>());
+
+    return equations;
+}
+
+/*
+   Start with a single feature, and iterate from smallest power (1 for now)
+   to highest power (10 for now). After that, increment the number of terms
+   in the polynomial and find every possible combination of the powers of
+   the terms in the polynomial, recording their equation and cost.
+ */
 int main(int argc, char **argv)
 {
     if (argc == 1)
@@ -56,21 +111,29 @@ int main(int argc, char **argv)
         }
     }
 
-    std::array<float, 1> vw;
-    vw.fill(0.f);
-    float b = 0.f;
-
-    for (size_t i = 0; i < 1000; ++i)
+    std::vector<Equation<3>> eqs = all_possible_powers<3>(3);
+    for (const auto &eq : eqs)
     {
-        reg::general::descend<1>(vw, b, .1f, data,
-                [&](const std::array<float, 1> &vw,
-                    const std::array<float, 1> &vx,
-                    float b){
-            return vw[0] * vx[0] + b;
-        });
+        for (float p : eq.xpows)
+            printf("%f ", p);
+        printf("\n");
     }
 
-    printf("%.2fx + %.2f\n", vw[0], b);
+    /* std::array<float, 1> vw; */
+    /* vw.fill(0.f); */
+    /* float b = 0.f; */
+
+    /* for (size_t i = 0; i < 1000; ++i) */
+    /* { */
+    /*     reg::general::descend<1>(vw, b, .1f, data, */
+    /*             [&](const std::array<float, 1> &vw, */
+    /*                 const std::array<float, 1> &vx, */
+    /*                 float b){ */
+    /*         return vw[0] * vx[0] + b; */
+    /*     }); */
+    /* } */
+
+    /* printf("%.2fx + %.2f\n", vw[0], b); */
 
 #ifdef GRAPHICS
     SDL_Init(SDL_INIT_VIDEO);
