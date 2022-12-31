@@ -65,21 +65,15 @@ private:
                 ssout << 'x';
 
                 if ((int)pow != 1)
-                {
-                    std::stringstream spow;
-                    spow.precision(2);
-                    spow << pow;
-
-                    ssout << '^' << (pow < 1.f ? "{" + spow.str() + "}" : spow.str());
-                }
+                    ssout << '^' << '{' << pow << '}';
                 ssout << " + ";
             }
         }
 
-        std::string res = ssout.str();
-
         if (std::abs(b) > 1e-3f)
             ssout << b;
+
+        std::string res = ssout.str();
 
         if (res[res.size() - 1] == ' ')
             res = res.substr(0, res.size() - 3);
@@ -205,6 +199,7 @@ struct BestFitInfo
         {
             sd.emplace_back(sd_tmp[i]);
             mean.emplace_back(mean_tmp[i]);
+            xpows.emplace_back(eq.xpows[i]);
         }
 
         eq_display = eq.to_string();
@@ -212,7 +207,7 @@ struct BestFitInfo
 
     std::string eq_display;
     float cost;
-    std::vector<float> sd, mean;
+    std::vector<float> sd, mean, xpows;
 };
 
 template <size_t N>
@@ -271,7 +266,7 @@ int main(int argc, char **argv)
     }
 
     // Define constants
-    constexpr size_t max_terms = 5;
+    constexpr size_t max_terms = 3;
 
     // Load image
     int w, h;
@@ -304,24 +299,33 @@ int main(int argc, char **argv)
         std::stringstream scaled_eq;
         scaled_eq.precision(2);
         size_t index = 0;
-        for (char c : best_fit.eq_display)
+        for (size_t i = 0; i < best_fit.eq_display.size(); ++i)
         {
+            char c = best_fit.eq_display[i];
             if (c == 'x')
             {
-                scaled_eq << "((x - " << best_fit.mean[index]
+                scaled_eq << "((x^{" << best_fit.xpows[index] << "} - "
+                          << best_fit.mean[index]
                           << ") / " << best_fit.sd[index] << ")";
+                ++index;
             }
             else
             {
-                scaled_eq << c;
+                if (c == '^')
+                {
+                    while (best_fit.eq_display[i++] != '}')
+                        ;
+                }
+
+                scaled_eq << best_fit.eq_display[i];
             }
         }
 
-        printf("%s\n", scaled_eq.str().c_str());
+        printf("y = %s\n", scaled_eq.str().c_str());
     }
     else
     {
-        printf("%s\n", best_fit.eq_display.c_str());
+        printf("y = %s\n", best_fit.eq_display.c_str());
     }
 
     printf("Accuracy: %.2f%%\n", (1.f - best_fit.cost / .5f) * 100.f);
