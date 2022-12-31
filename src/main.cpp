@@ -64,7 +64,14 @@ private:
                     ssout << coeff;
                 ssout << 'x';
 
-                if ((int)pow != 1) ssout << '^' << pow;
+                if ((int)pow != 1)
+                {
+                    std::stringstream spow;
+                    spow.precision(2);
+                    spow << pow;
+
+                    ssout << '^' << (pow < 1.f ? "{" + spow.str() + "}" : spow.str());
+                }
                 ssout << " + ";
             }
         }
@@ -292,17 +299,30 @@ int main(int argc, char **argv)
     printf("x from [%.2f,%.2f], y from [%.2f,%.2f]\n",
             gmin.x, gmax.x, gmin.y, gmax.y);
 
-    printf("%s\n", best_fit.eq_display.c_str());
-    /* if (g_fscale) */
-    /* { */
-    /*     std::string scaled_eq; */
-    /*     for (char c : best_fit.first) */
-    /*     { */
-    /*         if (c == 'x') */
-    /*         { */
-    /*         } */
-    /*     } */
-    /* } */
+    if (g_fscale)
+    {
+        std::stringstream scaled_eq;
+        scaled_eq.precision(2);
+        size_t index = 0;
+        for (char c : best_fit.eq_display)
+        {
+            if (c == 'x')
+            {
+                scaled_eq << "((x - " << best_fit.mean[index]
+                          << ") / " << best_fit.sd[index] << ")";
+            }
+            else
+            {
+                scaled_eq << c;
+            }
+        }
+
+        printf("%s\n", scaled_eq.str().c_str());
+    }
+    else
+    {
+        printf("%s\n", best_fit.eq_display.c_str());
+    }
 
     printf("Accuracy: %.2f%%\n", (1.f - best_fit.cost / .5f) * 100.f);
 
