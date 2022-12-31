@@ -1,6 +1,5 @@
 #include <sstream>
 #include <reg.h>
-#include <graph2.h>
 
 extern "C" {
 #define STB_IMAGE_IMPLEMENTATION
@@ -258,57 +257,8 @@ int main(int argc, char **argv)
     }
 
     // Find best fit graph out of all possible polynomials
-
     std::pair<std::string, float> best_fit = find_best_fit_all<max_terms>(max_pow, data);
-    printf("Equation: %s\nCost: %f\n", best_fit.first.c_str(), best_fit.second);
-
-#ifdef GRAPHICS
-    SDL_Init(SDL_INIT_VIDEO);
-    SDL_Window *win = SDL_CreateWindow("Graph",
-            SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-            600, 600, SDL_WINDOW_SHOWN);
-    SDL_Renderer *rend = SDL_CreateRenderer(win, -1,
-            SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-
-    graph::Graph2 graph;
-    graph.add_shape(graph::Graph2Shape(
-        {
-            { 0.f, 0.f }, { 1.f, 1.f },
-            { 1.f, 0.f }, { 0.f, 1.f }
-        },
-        { 1.f, 0.f, 0.f }
-    ));
-    graph.set_shape_size(2.f);
-
-    graph.load(graph_config);
-
-    bool running = true;
-    SDL_Event evt;
-
-    while (running)
-    {
-        while (SDL_PollEvent(&evt))
-        {
-            switch (evt.type)
-            {
-            case SDL_QUIT:
-                running = false;
-                break;
-            }
-        }
-
-        SDL_RenderClear(rend);
-
-        graph.render(rend, { 0, 0, 600, 600 }, [](float x){ return 0.f; });
-
-        SDL_SetRenderDrawColor(rend, 0, 0, 0, 255);
-        SDL_RenderPresent(rend);
-    }
-
-    SDL_DestroyRenderer(rend);
-    SDL_DestroyWindow(win);
-    SDL_Quit();
-#endif
+    printf("Assuming x in [0,1] and y in [0,1]:\ny = %s\n", best_fit.first.c_str());
 
     return 0;
 }
