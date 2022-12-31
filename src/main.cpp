@@ -125,7 +125,8 @@ Equation<N - 1> make_polynomial_invpow()
 
 // Returns cost
 template <size_t N>
-float fit_eq(Equation<N> &eq, size_t iters, float a, std::vector<reg::DataPoint<N>> data)
+float fit_eq(Equation<N> &eq, size_t iters, float a, std::vector<reg::DataPoint<N>> data,
+        std::array<float, N> &sd, std::array<float, N> &mean)
 {
     auto f_xraise = [eq](std::array<float, N> x){
         for (size_t i = 0; i < N; ++i)
@@ -138,7 +139,6 @@ float fit_eq(Equation<N> &eq, size_t iters, float a, std::vector<reg::DataPoint<
         for (auto &dp : data)
             dp.features = f_xraise(dp.features);
 
-        std::array<float, N> sd, mean;
         reg::general::feature_scale<N>(data, sd, mean);
     }
 
@@ -184,29 +184,53 @@ std::vector<reg::DataPoint<N>> reduce_data(const std::vector<reg::DataPoint<No>>
     return res;
 }
 
-template <size_t N>
-std::pair<std::string, float> find_best_fit(const std::vector<reg::DataPoint<N>> &data)
+struct BestFitInfo
 {
-    std::pair<std::string, float> res{ "", std::numeric_limits<float>::max() };
+    BestFitInfo() = default;
+    template <size_t N>
+    BestFitInfo(Equation<N> eq, const std::vector<reg::DataPoint<N>> &data,
+            size_t iters, float a)
+    {
+        std::array<float, N> sd_tmp, mean_tmp;
+        cost = fit_eq(eq, iters, a, data, sd_tmp, mean_tmp);
+
+        for (size_t i = 0; i < N; ++i)
+        {
+            sd.emplace_back(sd_tmp[i]);
+            mean.emplace_back(mean_tmp[i]);
+        }
+
+        eq_display = eq.to_string();
+    }
+
+    std::string eq_display;
+    float cost;
+    std::vector<float> sd, mean;
+};
+
+template <size_t N>
+BestFitInfo find_best_fit(const std::vector<reg::DataPoint<N>> &data)
+{
+    BestFitInfo res;
+    res.cost = std::numeric_limits<float>::max(); // for N == 0
+
+    int iters = 1000;
+    float a = .1f;
 
     if constexpr (N > 0)
     {
-        Equation<N> eqn = make_polynomial<N>();
-        std::pair<Equation<N>&, float> fitn = { eqn, fit_eq(eqn, 1000, .1f, data) };
+        BestFitInfo fit = BestFitInfo(make_polynomial<N>(), data, iters, a);
 
         if constexpr (N == 1)
-            return { fitn.first.to_string(), fitn.second };
+            return fit;
         else
         {
-            Equation<N - 1> eqni = make_polynomial_invpow<N>();
-
             auto reduced_data = reduce_data<N - 1, N>(data);
-            std::pair<Equation<N - 1>&, float> fitni = { eqni, fit_eq(eqni, 1000, .1f, reduced_data) };
-            std::pair<std::string, float> fitn1 = find_best_fit(reduced_data);
 
-            res.first = fitni.second < fitn.second && fitni.second < fitn1.second ? fitni.first.to_string() :
-                (fitn.second < fitn1.second ? fitn.first.to_string() : fitn1.first);
-            res.second = std::min(fitni.second, std::min(fitn.second, fitn1.second));
+            BestFitInfo fitni = BestFitInfo(make_polynomial_invpow<N>(), reduced_data, iters, a);
+            BestFitInfo fitn = find_best_fit<N - 1>(reduced_data);
+
+            res = (fit.cost < fitni.cost && fit.cost < fitn.cost) ? fit : (fitni.cost < fitn.cost ? fitni : fitn);
         }
     }
 
@@ -264,9 +288,23 @@ int main(int argc, char **argv)
     }
 
     // Find best fit graph out of all possible polynomials
-    std::pair<std::string, float> best_fit = find_best_fit<max_terms>(data);
-    printf("x from [%.2f,%.2f], y from [%.2f,%.2f]\ny = %s\nAccuracy %.2f%%\n",
-            gmin.x, gmax.x, gmin.y, gmax.y, best_fit.first.c_str(), (1.f - best_fit.second / .5f) * 100.f);
+    BestFitInfo best_fit = find_best_fit<max_terms>(data);
+    printf("x from [%.2f,%.2f], y from [%.2f,%.2f]\n",
+            gmin.x, gmax.x, gmin.y, gmax.y);
+
+    printf("%s\n", best_fit.eq_display.c_str());
+    /* if (g_fscale) */
+    /* { */
+    /*     std::string scaled_eq; */
+    /*     for (char c : best_fit.first) */
+    /*     { */
+    /*         if (c == 'x') */
+    /*         { */
+    /*         } */
+    /*     } */
+    /* } */
+
+    printf("Accuracy: %.2f%%\n", (1.f - best_fit.cost / .5f) * 100.f);
 
     return 0;
 }
