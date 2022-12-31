@@ -229,7 +229,6 @@ int main(int argc, char **argv)
 
     // Define constants
     constexpr size_t max_terms = 3;
-    size_t max_pow = 3;
 
     // Load image
     int w, h;
@@ -257,7 +256,7 @@ int main(int argc, char **argv)
     }
 
     // Find best fit graph out of all possible polynomials
-    std::pair<std::string, float> best_fit = find_best_fit_all<max_terms>(max_pow, data);
+    std::pair<std::string, float> best_fit = find_best_fit_all<max_terms>(max_terms, data);
     printf("Assuming x in [0,1] and y in [0,1]:\ny = %s\n", best_fit.first.c_str());
 
     return 0;
