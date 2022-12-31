@@ -101,37 +101,14 @@ bool load_image(std::vector<std::array<unsigned char, 3>> &image, const std::str
 
 // N: num terms
 template <size_t N>
-std::vector<Equation<N>> all_possible_powers(int maxp)
+Equation<N> make_polynomial()
 {
-    std::vector<Equation<N>> equations;
+    Equation<N> eq;
 
-    if constexpr (N > 0)
-    {
-        std::vector<Equation<N - 1>> next_term_eqs = all_possible_powers<N - 1>(maxp - 1);
-        equations.reserve(next_term_eqs.size() * (2 * maxp - 1));
+    for (size_t i = 0; i < N; ++i)
+        eq.xpows[i] = i + 1;
 
-        // Each eq in next_term_eqs needs to be paired with every possible power
-        // of the current term
-        for (const auto &eq : next_term_eqs)
-        {
-            // Initialize base equation's xpows[0:N-1] whose
-            // last term power will be modified from [1,maxp]
-            Equation<N> e;
-            for (size_t j = 0; j < N - 1; ++j)
-                e.xpows[j] = eq.xpows[j];
-
-            for (int pow = 1; pow <= maxp; ++pow)
-            {
-                e.xpows[N - 1] = pow;
-                equations.emplace_back(e);
-            }
-        }
-    }
-
-    if (equations.empty())
-        equations.emplace_back(Equation<N>());
-
-    return equations;
+    return eq;
 }
 
 // Returns cost
@@ -165,35 +142,10 @@ float fit_eq(Equation<N> &eq, size_t iters, float a, std::vector<reg::DataPoint<
         return std::pow((reg::general::dot(eq.vw, f_xraise(dp.features)) + eq.b) - dp.y, 2);
     });
 
-    /* for (size_t i = 0; i < eq.vw.size(); ++i) */
-    /*     eq.vw[i] = eq.vw[i] * sd[i] + mean[i]; */
-
     if (g_verbose)
         printf("Fit %s: Cost = %f\n", eq.to_string().c_str(), cost);
 
     return cost;
-}
-
-// N: num terms
-// Returns pair { eq: cost }
-template <size_t N>
-std::pair<Equation<N>, float> find_best_fit(int maxp, const std::vector<reg::DataPoint<N>> &data)
-{
-    std::vector<Equation<N>> eqs = all_possible_powers<N>(maxp);
-
-    float min_cost = std::numeric_limits<float>::max();
-    Equation<N> min_cost_e;
-    for (auto &eq : eqs)
-    {
-        float cost = fit_eq(eq, 1000, .1f, data);
-        if (cost < min_cost)
-        {
-            min_cost = cost;
-            min_cost_e = eq;
-        }
-    }
-
-    return { min_cost_e, min_cost };
 }
 
 // N: new feature num
@@ -217,18 +169,21 @@ std::vector<reg::DataPoint<N>> reduce_data(const std::vector<reg::DataPoint<No>>
 }
 
 template <size_t N>
-std::pair<std::string, float> find_best_fit_all(int maxp, const std::vector<reg::DataPoint<N>> &data)
+std::pair<std::string, float> find_best_fit(const std::vector<reg::DataPoint<N>> &data)
 {
     std::pair<std::string, float> res{ "", std::numeric_limits<float>::max() };
 
     if constexpr (N > 0)
     {
-        std::pair<Equation<N>, float> best_n = find_best_fit<N>(maxp, data);
-        std::pair<std::string, float> best_next_n = find_best_fit_all<N - 1>(maxp, reduce_data<N - 1, N>(data));
+        Equation<N> eqn = make_polynomial<N>();
 
-        bool best_n_better = best_n.second < best_next_n.second;
-        res.first = best_n_better ? best_n.first.to_string() : best_next_n.first;
-        res.second = best_n_better ? best_n.second : best_next_n.second;
+        std::pair<Equation<N>&, float> fitn = { eqn, fit_eq(eqn, 1000, .1f, data) };
+        std::pair<std::string, float> fitn1 = find_best_fit(reduce_data<N - 1, N>(data));
+
+        printf("%s\n", fitn.first.to_string().c_str());
+
+        res.first = fitn.second < fitn1.second ? fitn.first.to_string() : fitn1.first;
+        res.second = std::min(fitn.second, fitn1.second);
     }
 
     return res;
@@ -282,7 +237,7 @@ int main(int argc, char **argv)
     }
 
     // Find best fit graph out of all possible polynomials
-    std::pair<std::string, float> best_fit = find_best_fit_all<max_terms>(max_terms, data);
+    std::pair<std::string, float> best_fit = find_best_fit<max_terms>(data);
     printf("x from [%.2f,%.2f], y from [%.2f,%.2f]\ny = %s\nAccuracy %.2f%%\n",
             gmin.x, gmax.x, gmin.y, gmax.y, best_fit.first.c_str(), (1.f - best_fit.second / .5f) * 100.f);
 
