@@ -224,8 +224,20 @@ int main(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
 
-    if (argc == 3 && strcmp(argv[2], "-v") == 0)
-        g_verbose = true;
+    glm::vec2 gmin(0.f, 0.f),
+              gmax(1.f, 1.f);
+    for (int i = 2; i < argc; ++i)
+    {
+        if (strcmp(argv[i], "-v") == 0)
+            g_verbose = true;
+
+        if (strcmp(argv[i], "-dim") == 0)
+        {
+            std::stringstream ss(argv[++i]);
+            char c;
+            ss >> gmin.x >> c >> gmin.y >> c >> gmax.x >> c >> gmax.y;
+        }
+    }
 
     // Define constants
     constexpr size_t max_terms = 3;
@@ -237,27 +249,23 @@ int main(int argc, char **argv)
 
     // Setup graph & data points for regression
     std::vector<reg::DataPoint<max_terms>> data;
-    std::string graph_config = "min 0 0\nmax 1 1\nstep .2 .2\n";
     for (size_t i = 0; i < imgdata.size(); ++i)
     {
         if (IS_BLACK(imgdata[i]))
         {
-            float x = (float)(i % w) / (w - 1);
-            float y = 1.f - (float)(i - (i % w)) / w / (h - 1);
+            float x = (float)(i % w) / (w - 1) * (gmax.x - gmin.x) + gmin.x;
+            float y = (1.f - (float)(i - (i % w)) / w / (h - 1)) * (gmax.y - gmin.y) + gmin.y;
 
             reg::DataPoint<max_terms> dp;
             dp.features.fill(x);
             dp.y = y;
             data.emplace_back(dp);
-
-            graph_config += "data " + std::to_string(x) +
-                            " " + std::to_string(y) + "0\n";
         }
     }
 
     // Find best fit graph out of all possible polynomials
     std::pair<std::string, float> best_fit = find_best_fit_all<max_terms>(max_terms, data);
-    printf("Assuming x in [0,1] and y in [0,1]:\ny = %s\n", best_fit.first.c_str());
+    printf("x from [%.2f,%.2f], y from [%.2f,%.2f]\ny = %s\n", gmin.x, gmax.x, gmin.y, gmax.y, best_fit.first.c_str());
 
     return 0;
 }
