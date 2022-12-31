@@ -111,6 +111,17 @@ Equation<N> make_polynomial()
     return eq;
 }
 
+template <size_t N>
+Equation<N - 1> make_polynomial_invpow()
+{
+    Equation<N - 1> eq;
+
+    for (size_t i = 0; i < N - 1; ++i)
+        eq.xpows[i] = 1.f / (i + 2);
+
+    return eq;
+}
+
 // Returns cost
 template <size_t N>
 float fit_eq(Equation<N> &eq, size_t iters, float a, std::vector<reg::DataPoint<N>> data)
@@ -176,14 +187,22 @@ std::pair<std::string, float> find_best_fit(const std::vector<reg::DataPoint<N>>
     if constexpr (N > 0)
     {
         Equation<N> eqn = make_polynomial<N>();
-
         std::pair<Equation<N>&, float> fitn = { eqn, fit_eq(eqn, 1000, .1f, data) };
-        std::pair<std::string, float> fitn1 = find_best_fit(reduce_data<N - 1, N>(data));
 
-        printf("%s\n", fitn.first.to_string().c_str());
+        if constexpr (N == 1)
+            return { fitn.first.to_string(), fitn.second };
+        else
+        {
+            Equation<N - 1> eqni = make_polynomial_invpow<N>();
 
-        res.first = fitn.second < fitn1.second ? fitn.first.to_string() : fitn1.first;
-        res.second = std::min(fitn.second, fitn1.second);
+            auto reduced_data = reduce_data<N - 1, N>(data);
+            std::pair<Equation<N - 1>&, float> fitni = { eqni, fit_eq(eqni, 1000, .1f, reduced_data) };
+            std::pair<std::string, float> fitn1 = find_best_fit(reduced_data);
+
+            res.first = fitni.second < fitn.second && fitni.second < fitn1.second ? fitni.first.to_string() :
+                (fitn.second < fitn1.second ? fitn.first.to_string() : fitn1.first);
+            res.second = std::min(fitni.second, std::min(fitn.second, fitn1.second));
+        }
     }
 
     return res;
