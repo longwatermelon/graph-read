@@ -96,7 +96,7 @@ std::vector<Equation<N>> all_possible_powers(int maxp)
 
     if constexpr (N > 0)
     {
-        std::vector<Equation<N - 1>> next_term_eqs = all_possible_powers<N - 1>(maxp);
+        std::vector<Equation<N - 1>> next_term_eqs = all_possible_powers<N - 1>(maxp - 1);
 
         // Each eq in next_term_eqs needs to be paired with every possible power
         // of the current term
