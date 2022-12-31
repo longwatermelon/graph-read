@@ -72,7 +72,8 @@ private:
 
         if (std::abs(b) > 1e-3f)
             ssout << b;
-        else
+
+        if (res[res.size() - 1] == ' ')
             res = res.substr(0, res.size() - 3);
 
         return res;
