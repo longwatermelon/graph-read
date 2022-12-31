@@ -59,13 +59,23 @@ private:
         {
             if (std::abs(coeff) > 1e-4f)
             {
-                ssout << coeff << "x";
-                if ((int)pow != 1) ssout << "^" << pow;
+                if (std::abs(coeff - 1.f) > 1e-2f)
+                    ssout << coeff;
+                ssout << 'x';
+
+                if ((int)pow != 1) ssout << '^' << pow;
                 ssout << " + ";
             }
         }
-        ssout << b;
-        return ssout.str();
+
+        std::string res = ssout.str();
+
+        if (std::abs(b) > 1e-3f)
+            ssout << b;
+        else
+            res = res.substr(0, res.size() - 3);
+
+        return res;
     }
 };
 
@@ -125,13 +135,19 @@ std::vector<Equation<N>> all_possible_powers(int maxp)
 
 // Returns cost
 template <size_t N>
-float fit_eq(Equation<N> &eq, size_t iters, float a, const std::vector<reg::DataPoint<N>> &data)
+float fit_eq(Equation<N> &eq, size_t iters, float a, std::vector<reg::DataPoint<N>> data)
 {
     auto f_xraise = [eq](std::array<float, N> x){
         for (size_t i = 0; i < N; ++i)
             x[i] = std::pow(x[i], eq.xpows[i]);
         return x;
     };
+
+    /* for (auto &dp : data) */
+    /*     dp.features = f_xraise(dp.features); */
+
+    /* std::array<float, N> sd, mean; */
+    /* reg::general::feature_scale<N>(data, sd, mean); */
 
     for (size_t i = 0; i < iters; ++i)
     {
@@ -147,6 +163,9 @@ float fit_eq(Equation<N> &eq, size_t iters, float a, const std::vector<reg::Data
             [eq, f_xraise](const reg::DataPoint<N> &dp){
         return std::pow((reg::general::dot(eq.vw, f_xraise(dp.features)) + eq.b) - dp.y, 2);
     });
+
+    /* for (size_t i = 0; i < eq.vw.size(); ++i) */
+    /*     eq.vw[i] = eq.vw[i] * sd[i] + mean[i]; */
 
     if (g_verbose)
         printf("Fit %s: Cost = %f\n", eq.to_string().c_str(), cost);
@@ -261,12 +280,10 @@ int main(int argc, char **argv)
         }
     }
 
-    /* std::array<float, max_terms> sd, mean; */
-    /* reg::general::feature_scale(data, sd, mean); */
-
     // Find best fit graph out of all possible polynomials
     std::pair<std::string, float> best_fit = find_best_fit_all<max_terms>(max_terms, data);
-    printf("x from [%.2f,%.2f], y from [%.2f,%.2f]\ny = %s\n", gmin.x, gmax.x, gmin.y, gmax.y, best_fit.first.c_str());
+    printf("x from [%.2f,%.2f], y from [%.2f,%.2f]\ny = %s\nAccuracy %.2f%%\n",
+            gmin.x, gmax.x, gmin.y, gmax.y, best_fit.first.c_str(), (1.f - best_fit.second / .5f) * 100.f);
 
     return 0;
 }
