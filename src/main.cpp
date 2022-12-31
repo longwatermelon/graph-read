@@ -10,6 +10,8 @@ extern "C" {
 #define BLACK_THRESHOLD 50
 #define IS_BLACK(pix) (pix[0] <= BLACK_THRESHOLD && pix[1] <= BLACK_THRESHOLD && pix[2] <= BLACK_THRESHOLD)
 
+bool g_verbose = false;
+
 template <size_t N>
 struct Equation
 {
@@ -26,7 +28,7 @@ struct Equation
         ss.precision(2);
         for (size_t i = 0; i < N; ++i)
             ss << vw[i] << "x^" << xpows[i] << " + ";
-        ss << b << '\n';
+        ss << b;
         return reduce_str(ss.str());
     }
 
@@ -55,8 +57,15 @@ private:
         std::stringstream ssout;
         ssout.precision(2);
         for (const auto &[pow, coeff] : pow_coeffs)
-            ssout << coeff << "x^" << pow << " + ";
-        ssout << b << '\n';
+        {
+            if (std::abs(coeff) > 1e-4f)
+            {
+                ssout << coeff << "x";
+                if ((int)pow != 1) ssout << "^" << pow;
+                ssout << " + ";
+            }
+        }
+        ssout << b;
         return ssout.str();
     }
 };
@@ -134,10 +143,15 @@ float fit_eq(Equation<N> &eq, size_t iters, float a, const std::vector<reg::Data
         });
     }
 
-    return reg::general::cost<N>(data,
+    float cost = reg::general::cost<N>(data,
             [eq, f_xraise](const reg::DataPoint<N> &dp){
         return std::pow((reg::general::dot(eq.vw, f_xraise(dp.features)) + eq.b) - dp.y, 2);
     });
+
+    if (g_verbose)
+        printf("Fit %s: Cost = %f\n", eq.to_string().c_str(), cost);
+
+    return cost;
 }
 
 // N: num terms
@@ -210,6 +224,9 @@ int main(int argc, char **argv)
         fprintf(stderr, "Error: no file provided\n");
         exit(EXIT_FAILURE);
     }
+
+    if (argc == 3 && strcmp(argv[2], "-v") == 0)
+        g_verbose = true;
 
     // Define constants
     constexpr size_t max_terms = 3;
