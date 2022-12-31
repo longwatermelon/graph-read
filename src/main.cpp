@@ -10,6 +10,7 @@ extern "C" {
 #define IS_BLACK(pix) (pix[0] <= BLACK_THRESHOLD && pix[1] <= BLACK_THRESHOLD && pix[2] <= BLACK_THRESHOLD)
 
 bool g_verbose = false;
+bool g_fscale = false;
 
 template <size_t N>
 struct Equation
@@ -132,11 +133,14 @@ float fit_eq(Equation<N> &eq, size_t iters, float a, std::vector<reg::DataPoint<
         return x;
     };
 
-    /* for (auto &dp : data) */
-    /*     dp.features = f_xraise(dp.features); */
+    if (g_fscale)
+    {
+        for (auto &dp : data)
+            dp.features = f_xraise(dp.features);
 
-    /* std::array<float, N> sd, mean; */
-    /* reg::general::feature_scale<N>(data, sd, mean); */
+        std::array<float, N> sd, mean;
+        reg::general::feature_scale<N>(data, sd, mean);
+    }
 
     for (size_t i = 0; i < iters; ++i)
     {
@@ -144,13 +148,14 @@ float fit_eq(Equation<N> &eq, size_t iters, float a, std::vector<reg::DataPoint<
             [f_xraise](const std::array<float, N> &vw,
                const std::array<float, N> &vx,
                float b){
-            return reg::general::dot(vw, f_xraise(vx)) + b;
+            // Don't raise vx to power, data already has been raised
+            return reg::general::dot(vw, g_fscale ? vx : f_xraise(vx)) + b;
         });
     }
 
     float cost = reg::general::cost<N>(data,
             [eq, f_xraise](const reg::DataPoint<N> &dp){
-        return std::pow((reg::general::dot(eq.vw, f_xraise(dp.features)) + eq.b) - dp.y, 2);
+        return std::pow((reg::general::dot(eq.vw, g_fscale ? dp.features : f_xraise(dp.features)) + eq.b) - dp.y, 2);
     });
 
     if (g_verbose)
@@ -223,6 +228,9 @@ int main(int argc, char **argv)
         if (strcmp(argv[i], "-v") == 0)
             g_verbose = true;
 
+        if (strcmp(argv[i], "-fs") == 0)
+            g_fscale = true;
+
         if (strcmp(argv[i], "-dim") == 0)
         {
             std::stringstream ss(argv[++i]);
@@ -232,7 +240,7 @@ int main(int argc, char **argv)
     }
 
     // Define constants
-    constexpr size_t max_terms = 3;
+    constexpr size_t max_terms = 5;
 
     // Load image
     int w, h;
