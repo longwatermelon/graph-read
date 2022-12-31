@@ -97,6 +97,7 @@ std::vector<Equation<N>> all_possible_powers(int maxp)
     if constexpr (N > 0)
     {
         std::vector<Equation<N - 1>> next_term_eqs = all_possible_powers<N - 1>(maxp - 1);
+        equations.reserve(next_term_eqs.size() * (2 * maxp - 1));
 
         // Each eq in next_term_eqs needs to be paired with every possible power
         // of the current term
@@ -181,6 +182,8 @@ template <size_t N, size_t No>
 std::vector<reg::DataPoint<N>> reduce_data(const std::vector<reg::DataPoint<No>> &data)
 {
     std::vector<reg::DataPoint<N>> res;
+    res.reserve(data.size());
+
     for (const auto &p : data)
     {
         reg::DataPoint<N> pn;
@@ -189,6 +192,7 @@ std::vector<reg::DataPoint<N>> reduce_data(const std::vector<reg::DataPoint<No>>
         pn.y = p.y;
         res.emplace_back(pn);
     }
+
     return res;
 }
 
@@ -210,12 +214,6 @@ std::pair<std::string, float> find_best_fit_all(int maxp, const std::vector<reg:
     return res;
 }
 
-/*
-   Start with a single feature, and iterate from smallest power (1 for now)
-   to highest power (10 for now). After that, increment the number of terms
-   in the polynomial and find every possible combination of the powers of
-   the terms in the polynomial, recording their equation and cost.
- */
 int main(int argc, char **argv)
 {
     if (argc == 1)
@@ -262,6 +260,9 @@ int main(int argc, char **argv)
             data.emplace_back(dp);
         }
     }
+
+    /* std::array<float, max_terms> sd, mean; */
+    /* reg::general::feature_scale(data, sd, mean); */
 
     // Find best fit graph out of all possible polynomials
     std::pair<std::string, float> best_fit = find_best_fit_all<max_terms>(max_terms, data);
