@@ -1,3 +1,4 @@
+#include <sstream>
 #include <reg.h>
 #include <graph2.h>
 
@@ -19,9 +20,45 @@ struct Equation
         xpows.fill(0.f);
     }
 
+    std::string to_string() const
+    {
+        std::stringstream ss;
+        ss.precision(2);
+        for (size_t i = 0; i < N; ++i)
+            ss << vw[i] << "x^" << xpows[i] << " + ";
+        ss << b << '\n';
+        return reduce_str(ss.str());
+    }
+
     std::array<float, N> vw, vx;
     std::array<float, N> xpows;
     float b{ 0.f };
+
+private:
+    std::string reduce_str(const std::string &repr) const
+    {
+        // pow: coeff
+        std::unordered_map<float, float> pow_coeffs;
+        for (size_t i = 0; i < N; ++i)
+            pow_coeffs[xpows[i]] = 0.f;
+
+        std::stringstream ss(repr);
+        for (size_t i = 0; i < N; ++i)
+        {
+            char tmp;
+            float coeff;
+            float pow;
+            ss >> coeff >> tmp >> tmp >> pow >> tmp;
+            pow_coeffs[pow] += coeff;
+        }
+
+        std::stringstream ssout;
+        ssout.precision(2);
+        for (const auto &[pow, coeff] : pow_coeffs)
+            ssout << coeff << "x^" << pow << " + ";
+        ssout << b << '\n';
+        return ssout.str();
+    }
 };
 
 bool load_image(std::vector<std::array<unsigned char, 3>> &image, const std::string &path, int &x, int &y)
@@ -77,6 +114,89 @@ std::vector<Equation<N>> all_possible_powers(int maxp)
     return equations;
 }
 
+// Returns cost
+template <size_t N>
+float fit_eq(Equation<N> &eq, size_t iters, float a, const std::vector<reg::DataPoint<N>> &data)
+{
+    auto f_xraise = [eq](std::array<float, N> x){
+        for (size_t i = 0; i < N; ++i)
+            x[i] = std::pow(x[i], eq.xpows[i]);
+        return x;
+    };
+
+    for (size_t i = 0; i < iters; ++i)
+    {
+        reg::general::descend<N>(eq.vw, eq.b, a, data,
+            [f_xraise](const std::array<float, N> &vw,
+               const std::array<float, N> &vx,
+               float b){
+            return reg::general::dot(vw, f_xraise(vx)) + b;
+        });
+    }
+
+    return reg::general::cost<N>(data,
+            [eq, f_xraise](const reg::DataPoint<N> &dp){
+        return std::pow((reg::general::dot(eq.vw, f_xraise(dp.features)) + eq.b) - dp.y, 2);
+    });
+}
+
+// N: num terms
+// Returns pair { eq: cost }
+template <size_t N>
+std::pair<Equation<N>, float> find_best_fit(int maxp, const std::vector<reg::DataPoint<N>> &data)
+{
+    std::vector<Equation<N>> eqs = all_possible_powers<N>(maxp);
+
+    float min_cost = std::numeric_limits<float>::max();
+    Equation<N> min_cost_e;
+    for (auto &eq : eqs)
+    {
+        float cost = fit_eq(eq, 1000, .1f, data);
+        if (cost < min_cost)
+        {
+            min_cost = cost;
+            min_cost_e = eq;
+        }
+    }
+
+    return { min_cost_e, min_cost };
+}
+
+// N: new feature num
+// No: orig feature num
+template <size_t N, size_t No>
+std::vector<reg::DataPoint<N>> reduce_data(const std::vector<reg::DataPoint<No>> &data)
+{
+    std::vector<reg::DataPoint<N>> res;
+    for (const auto &p : data)
+    {
+        reg::DataPoint<N> pn;
+        for (size_t i = 0; i < N; ++i)
+            pn.features[i] = p.features[i];
+        pn.y = p.y;
+        res.emplace_back(pn);
+    }
+    return res;
+}
+
+template <size_t N>
+std::pair<std::string, float> find_best_fit_all(int maxp, const std::vector<reg::DataPoint<N>> &data)
+{
+    std::pair<std::string, float> res{ "", std::numeric_limits<float>::max() };
+
+    if constexpr (N > 0)
+    {
+        std::pair<Equation<N>, float> best_n = find_best_fit<N>(maxp, data);
+        std::pair<std::string, float> best_next_n = find_best_fit_all<N - 1>(maxp, reduce_data<N - 1, N>(data));
+
+        bool best_n_better = best_n.second < best_next_n.second;
+        res.first = best_n_better ? best_n.first.to_string() : best_next_n.first;
+        res.second = best_n_better ? best_n.second : best_next_n.second;
+    }
+
+    return res;
+}
+
 /*
    Start with a single feature, and iterate from smallest power (1 for now)
    to highest power (10 for now). After that, increment the number of terms
@@ -91,13 +211,17 @@ int main(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
 
+    // Define constants
+    constexpr size_t max_terms = 3;
+    size_t max_pow = 3;
+
     // Load image
     int w, h;
     std::vector<std::array<unsigned char, 3>> imgdata;
     load_image(imgdata, argv[1], w, h);
 
     // Setup graph & data points for regression
-    std::vector<reg::DataPoint<1>> data;
+    std::vector<reg::DataPoint<max_terms>> data;
     std::string graph_config = "min 0 0\nmax 1 1\nstep .2 .2\n";
     for (size_t i = 0; i < imgdata.size(); ++i)
     {
@@ -105,35 +229,21 @@ int main(int argc, char **argv)
         {
             float x = (float)(i % w) / (w - 1);
             float y = 1.f - (float)(i - (i % w)) / w / (h - 1);
-            data.emplace_back(reg::DataPoint<1>({ x }, y));
+
+            reg::DataPoint<max_terms> dp;
+            dp.features.fill(x);
+            dp.y = y;
+            data.emplace_back(dp);
+
             graph_config += "data " + std::to_string(x) +
                             " " + std::to_string(y) + "0\n";
         }
     }
 
-    std::vector<Equation<3>> eqs = all_possible_powers<3>(3);
-    for (const auto &eq : eqs)
-    {
-        for (float p : eq.xpows)
-            printf("%f ", p);
-        printf("\n");
-    }
+    // Find best fit graph out of all possible polynomials
 
-    /* std::array<float, 1> vw; */
-    /* vw.fill(0.f); */
-    /* float b = 0.f; */
-
-    /* for (size_t i = 0; i < 1000; ++i) */
-    /* { */
-    /*     reg::general::descend<1>(vw, b, .1f, data, */
-    /*             [&](const std::array<float, 1> &vw, */
-    /*                 const std::array<float, 1> &vx, */
-    /*                 float b){ */
-    /*         return vw[0] * vx[0] + b; */
-    /*     }); */
-    /* } */
-
-    /* printf("%.2fx + %.2f\n", vw[0], b); */
+    std::pair<std::string, float> best_fit = find_best_fit_all<max_terms>(max_pow, data);
+    printf("Equation: %s\nCost: %f\n", best_fit.first.c_str(), best_fit.second);
 
 #ifdef GRAPHICS
     SDL_Init(SDL_INIT_VIDEO);
