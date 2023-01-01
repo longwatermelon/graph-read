@@ -1,12 +1,10 @@
 #include <sstream>
 #include <fstream>
 #include <reg.h>
-#include <graph2.h>
-
-#define GRAPHICS
 
 #ifdef GRAPHICS
 #include <SDL2/SDL.h>
+#include <graph2.h>
 #endif
 
 extern "C" {

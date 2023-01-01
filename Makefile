@@ -1,7 +1,7 @@
 CXX=g++
 CXXFLAGS=-std=c++17 -ggdb -Wall -O2
 INC=-Ideps/include
-LDFLAGS=-Ldeps/lib -lreg -lgraph -lSDL2
+LDFLAGS=-Ldeps/lib -lreg
 
 SRC=$(wildcard src/*.cpp)
 OBJS=$(addprefix obj/, $(SRC:.cpp=.o))
@@ -9,6 +9,10 @@ OBJS=$(addprefix obj/, $(SRC:.cpp=.o))
 .PHONY: dirs clean
 
 all: dirs target
+
+graphics: CXXFLAGS+=-DGRAPHICS
+graphics: LDFLAGS+=-lgraph -lSDL2
+graphics: dirs target
 
 target: $(OBJS)
 	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS)
