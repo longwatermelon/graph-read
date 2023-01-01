@@ -340,6 +340,7 @@ int main(int argc, char **argv)
 
     printf("Accuracy: %f%% | Cost: %f\n", (1.f - best_fit.cost / sum_y) * 100.f, best_fit.cost);
 
+#ifdef GRAPHICS
     if (g_graph)
     {
         SDL_Init(SDL_INIT_VIDEO);
@@ -401,6 +402,7 @@ int main(int argc, char **argv)
         SDL_DestroyWindow(win);
         SDL_Quit();
     }
+#endif
 
     return 0;
 }
