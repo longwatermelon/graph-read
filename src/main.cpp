@@ -356,7 +356,6 @@ int main(int argc, char **argv)
         ss >> tmp >> tmp >> pow;
 
         std::string filename = "graphs/" + std::to_string(pow);
-        printf("%s\n", filename.c_str());
         graph::Graph2 graph(filename);
         graph.add_shape(graph::Graph2Shape(
             {
