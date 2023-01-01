@@ -25,7 +25,6 @@ struct Equation
     std::string to_string() const
     {
         std::stringstream ss;
-        ss.precision(2);
         for (size_t i = 0; i < N; ++i)
             ss << vw[i] << "x^" << xpows[i] << " + ";
         ss << b;
@@ -55,7 +54,6 @@ private:
         }
 
         std::stringstream ssout;
-        ssout.precision(2);
         for (const auto &[pow, coeff] : pow_coeffs)
         {
             if (std::abs(coeff) > 1e-4f)
@@ -156,13 +154,19 @@ float fit_eq(Equation<N> &eq, size_t iters, float a, std::vector<reg::DataPoint<
 
     float cost = reg::general::cost<N>(data,
             [eq, f_xraise](const reg::DataPoint<N> &dp){
+        /* printf("x %f predict %f y %f\n", dp.features[0], reg::general::dot(eq.vw, g_fscale ? dp.features : f_xraise(dp.features)) + eq.b, dp.y); */
         return std::pow((reg::general::dot(eq.vw, g_fscale ? dp.features : f_xraise(dp.features)) + eq.b) - dp.y, 2);
     });
 
-    if (g_verbose)
-        printf("Fit %s: Cost = %f\n", eq.to_string().c_str(), cost);
+    printf("vw ");
+    for (const auto &w : eq.vw)
+        printf("%f ", w);
+    printf("\n");
 
-    return cost;
+    if (g_verbose)
+        printf("Fit %s: Cost = %f\n", eq.to_string().c_str(), std::sqrt(cost));
+
+    return std::sqrt(cost);
 }
 
 // N: new feature num
@@ -216,7 +220,7 @@ BestFitInfo find_best_fit(const std::vector<reg::DataPoint<N>> &data)
     BestFitInfo res;
     res.cost = std::numeric_limits<float>::max(); // for N == 0
 
-    int iters = 1000;
+    int iters = 2000;
     float a = .1f;
 
     if constexpr (N > 0)
@@ -228,11 +232,9 @@ BestFitInfo find_best_fit(const std::vector<reg::DataPoint<N>> &data)
         else
         {
             auto reduced_data = reduce_data<N - 1, N>(data);
-
-            BestFitInfo fitni = BestFitInfo(make_polynomial_invpow<N>(), reduced_data, iters, a);
             BestFitInfo fitn = find_best_fit<N - 1>(reduced_data);
 
-            res = (fit.cost < fitni.cost && fit.cost < fitn.cost) ? fit : (fitni.cost < fitn.cost ? fitni : fitn);
+            res = fitn.cost < fit.cost ? fitn : fit;
         }
     }
 
@@ -275,38 +277,69 @@ int main(int argc, char **argv)
 
     // Setup graph & data points for regression
     std::vector<reg::DataPoint<max_terms>> data;
-    for (size_t i = 0; i < imgdata.size(); ++i)
+    for (int x = 0; x < w; x += 2)
     {
-        if (IS_BLACK(imgdata[i]))
+        for (int y = 0; y < h; ++y)
         {
-            float x = (float)(i % w) / (w - 1) * (gmax.x - gmin.x) + gmin.x;
-            float y = (1.f - (float)(i - (i % w)) / w / (h - 1)) * (gmax.y - gmin.y) + gmin.y;
+            if (IS_BLACK(imgdata[y * w + x]))
+            {
+                /* int i = 0; */
+                /* while (y + i < h && IS_BLACK(imgdata[x + (y + i) * w])) */
+                /*     ++i; */
+                /* int middle_y = y + i / 2; */
+                int middle_y = y;
+                float gx = (float)(x) / (w - 1) * (gmax.x - gmin.x) + gmin.x;
+                float gy = (1.f - (float)(middle_y) / (h - 1)) * (gmax.y - gmin.y) + gmin.y;
 
-            reg::DataPoint<max_terms> dp;
-            dp.features.fill(x);
-            dp.y = y;
-            data.emplace_back(dp);
+                reg::DataPoint<max_terms> dp;
+                dp.features.fill(gx);
+                dp.y = gy;
+                data.emplace_back(dp);
+                break;
+            }
         }
     }
+    /* for (size_t i = 0; i < imgdata.size(); i += 3) */
+    /* { */
+    /*     if (IS_BLACK(imgdata[i])) */
+    /*     { */
+    /*         float x = (float)(i % w) / (w - 1) * (gmax.x - gmin.x) + gmin.x; */
+    /*         float y = (1.f - (float)(i - (i % w)) / w / (h - 1)) * (gmax.y - gmin.y) + gmin.y; */
+
+    /*         reg::DataPoint<max_terms> dp; */
+    /*         dp.features.fill(x); */
+    /*         dp.y = y; */
+    /*         data.emplace_back(dp); */
+    /*     } */
+    /* } */
 
     // Find best fit graph out of all possible polynomials
     BestFitInfo best_fit = find_best_fit<max_terms>(data);
     printf("x from [%.2f,%.2f], y from [%.2f,%.2f]\n",
             gmin.x, gmax.x, gmin.y, gmax.y);
 
+    float sum_x = 0.f;
+    for (const auto &x : data)
+    {
+        sum_x += x.features[0];
+        printf("%f %f\n", x.features[0], x.y);
+    }
+
+    printf("%f\n", sum_x / data.size());
+
     if (g_fscale)
     {
         std::stringstream scaled_eq;
-        scaled_eq.precision(2);
+        size_t n = best_fit.xpows.size() - 1;
         size_t index = 0;
         for (size_t i = 0; i < best_fit.eq_display.size(); ++i)
         {
             char c = best_fit.eq_display[i];
             if (c == 'x')
             {
-                scaled_eq << "((x^{" << best_fit.xpows[index] << "} - "
-                          << best_fit.mean[index]
-                          << ") / " << best_fit.sd[index] << ")";
+                scaled_eq << "((x^{" << best_fit.xpows[n - index] << "} - "
+                          << best_fit.mean[n - index]
+                          << ") / " << best_fit.sd[n - index] << ")";
                 ++index;
             }
             else
@@ -328,7 +361,12 @@ int main(int argc, char **argv)
         printf("y = %s\n", best_fit.eq_display.c_str());
     }
 
-    printf("Accuracy: %.2f%%\n", (1.f - best_fit.cost / .5f) * 100.f);
+    float sum_y = 0.f;
+    for (const auto &dp : data)
+        sum_y += dp.y * dp.y;
+
+    printf("%f %f\n", best_fit.cost, sum_y);
+    printf("Accuracy: %f%%\n", (1.f - best_fit.cost / sum_y) * 100.f);
 
     return 0;
 }
