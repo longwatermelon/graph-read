@@ -81,22 +81,13 @@ Equation<N> make_polynomial()
 
 // Returns cost
 template <size_t N>
-float fit_eq(Equation<N> &eq, size_t iters, float a, std::vector<reg::DataPoint<N>> data,
-        std::array<float, N> &sd, std::array<float, N> &mean)
+float fit_eq(Equation<N> &eq, size_t iters, float a, std::vector<reg::DataPoint<N>> data)
 {
     auto f_xraise = [eq](std::array<float, N> x){
         for (size_t i = 0; i < N; ++i)
             x[i] = std::pow(x[i], eq.xpows[i]);
         return x;
     };
-
-    if (g_fscale)
-    {
-        for (auto &dp : data)
-            dp.features = f_xraise(dp.features);
-
-        reg::general::feature_scale<N>(data, sd, mean);
-    }
 
     for (size_t i = 0; i < iters; ++i)
     {
@@ -117,34 +108,6 @@ float fit_eq(Equation<N> &eq, size_t iters, float a, std::vector<reg::DataPoint<
 
     if (g_verbose)
         printf("Fit %s: Cost = %f\n", eq.to_string().c_str(), std::sqrt(cost));
-
-#ifdef GRAPHICS
-    float min_x = std::numeric_limits<float>::max(),
-          max_x = std::numeric_limits<float>::min();
-
-    for (const auto &dp : data)
-    {
-        if (dp.features[0] < min_x) min_x = dp.features[0];
-        if (dp.features[0] > max_x) max_x = dp.features[0];
-    }
-
-    std::stringstream graph_config;
-    graph_config << "min " << min_x << ' ' << g_gmin.y
-                 << "\nmax " << max_x << ' ' << g_gmax.y
-                 << "\nstep " << (g_gmax.x - g_gmin.x) / 5.f
-                 << ' ' << (g_gmax.y - g_gmin.y) / 5.f << "\n";
-    for (const auto &dp : data)
-    {
-        float prediction = reg::general::dot(eq.vw, g_fscale ? dp.features : f_xraise(dp.features)) + eq.b;
-        graph_config << "data " << dp.features[0] << ' ' << prediction << " 0\n";
-        graph_config << "data " << dp.features[0] << ' ' << dp.y << " 1\n";
-    }
-
-    std::string graph_name = "graphs/" + std::to_string((int)eq.xpows[eq.xpows.size() - 1]);
-    std::ofstream ofs(graph_name);
-    ofs << graph_config.str();
-    ofs.close();
-#endif
 
     return std::sqrt(cost);
 }
@@ -172,21 +135,88 @@ std::vector<reg::DataPoint<N>> reduce_data(const std::vector<reg::DataPoint<No>>
 struct BestFitInfo
 {
     BestFitInfo() = default;
-    template <size_t N>
-    BestFitInfo(Equation<N> eq, const std::vector<reg::DataPoint<N>> &data,
-            size_t iters, float a)
-    {
-        std::array<float, N> sd_tmp, mean_tmp;
-        cost = fit_eq(eq, iters, a, data, sd_tmp, mean_tmp);
 
-        for (size_t i = 0; i < N; ++i)
+    template <size_t N>
+    BestFitInfo(std::vector<reg::DataPoint<N>> data,
+            size_t iters, float a, size_t attempts)
+    {
+        // Feature scale
+        Equation<N> eq = make_polynomial<N>();
+
+        auto f_xraise = [eq](std::array<float, N> x){
+            for (size_t i = 0; i < N; ++i)
+                x[i] = std::pow(x[i], eq.xpows[i]);
+            return x;
+        };
+
+        if (g_fscale)
         {
-            sd.emplace_back(sd_tmp[i]);
-            mean.emplace_back(mean_tmp[i]);
-            xpows.emplace_back(eq.xpows[i]);
+            for (auto &dp : data)
+                dp.features = f_xraise(dp.features);
+
+            std::array<float, N> sd_arr, mean_arr;
+            reg::general::feature_scale<N>(data, sd_arr, mean_arr);
+
+            for (size_t i = 0; i < N; ++i)
+            {
+                sd.emplace_back(sd_arr[i]);
+                mean.emplace_back(mean_arr[i]);
+            }
         }
 
+        // Random points for gradient descent
+        cost = std::numeric_limits<float>::max();
+
+        for (size_t i = 0; i < attempts; ++i)
+        {
+            Equation<N> eq_test = make_polynomial<N>();
+            for (auto &w : eq_test.vw)
+                w = (rand() % 1000) / 10.f - 50.f;
+
+            eq_test.b = (rand() % 1000) / 10.f - 50.f;
+            float test_cost = fit_eq(eq_test, iters, a, data);
+
+            if (test_cost < cost)
+            {
+                cost = test_cost;
+                eq = eq_test;
+            }
+        }
+
+        if (g_verbose) printf("\n");
+
+        for (size_t i = 0; i < N; ++i)
+            xpows.emplace_back(eq.xpows[i]);
+
         eq_display = eq.to_string();
+
+#ifdef GRAPHICS
+        float min_x = std::numeric_limits<float>::max(),
+              max_x = std::numeric_limits<float>::min();
+
+        for (const auto &dp : data)
+        {
+            if (dp.features[0] < min_x) min_x = dp.features[0];
+            if (dp.features[0] > max_x) max_x = dp.features[0];
+        }
+
+        std::stringstream graph_config;
+        graph_config << "min " << min_x << ' ' << g_gmin.y
+                     << "\nmax " << max_x << ' ' << g_gmax.y
+                     << "\nstep " << (g_gmax.x - g_gmin.x) / 5.f
+                     << ' ' << (g_gmax.y - g_gmin.y) / 5.f << "\n";
+        for (const auto &dp : data)
+        {
+            float prediction = reg::general::dot(eq.vw, g_fscale ? dp.features : f_xraise(dp.features)) + eq.b;
+            graph_config << "data " << dp.features[0] << ' ' << prediction << " 0\n";
+            graph_config << "data " << dp.features[0] << ' ' << dp.y << " 1\n";
+        }
+
+        std::string graph_name = "graphs/" + std::to_string((int)eq.xpows[eq.xpows.size() - 1]);
+        std::ofstream ofs(graph_name);
+        ofs << graph_config.str();
+        ofs.close();
+#endif
     }
 
     std::string to_string(bool latex)
@@ -242,7 +272,7 @@ BestFitInfo find_best_fit(const std::vector<reg::DataPoint<N>> &data)
 
     if constexpr (N > 0)
     {
-        BestFitInfo fit = BestFitInfo(make_polynomial<N>(), data, iters, a);
+        BestFitInfo fit = BestFitInfo(data, iters, a, 20);
 
         if constexpr (N == 1)
             return fit;
@@ -260,6 +290,7 @@ BestFitInfo find_best_fit(const std::vector<reg::DataPoint<N>> &data)
 
 int main(int argc, char **argv)
 {
+    srand(time(0));
     if (argc == 1)
     {
         fprintf(stderr, "Error: no file provided\n");
