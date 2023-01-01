@@ -11,6 +11,7 @@ extern "C" {
 
 bool g_verbose = false;
 bool g_fscale = false;
+bool g_latex = false;
 
 template <size_t N>
 struct Equation
@@ -193,6 +194,43 @@ struct BestFitInfo
         eq_display = eq.to_string();
     }
 
+    std::string to_string(bool latex)
+    {
+        std::stringstream scaled_eq;
+        size_t index = 0;
+        for (size_t i = 0; i < eq_display.size(); ++i)
+        {
+            char c = eq_display[i];
+            if (c == 'x')
+            {
+                if (latex)
+                {
+                    scaled_eq << "\\frac{x^{" << xpows[index] << "} - "
+                              << mean[index] << "}{" << sd[index] << "}";
+                }
+                else
+                {
+                    scaled_eq << "((x^{" << xpows[index] << "} - "
+                              << mean[index]
+                              << ") / " << sd[index] << ")";
+                }
+                ++index;
+            }
+            else
+            {
+                if (c == '^')
+                {
+                    while (eq_display[i++] != '}')
+                        ;
+                }
+
+                scaled_eq << eq_display[i];
+            }
+        }
+
+        return scaled_eq.str();
+    }
+
     std::string eq_display;
     float cost;
     std::vector<float> sd, mean, xpows;
@@ -249,6 +287,9 @@ int main(int argc, char **argv)
             char c;
             ss >> gmin.x >> c >> gmin.y >> c >> gmax.x >> c >> gmax.y;
         }
+
+        if (strcmp(argv[i], "-latex") == 0)
+            g_latex = true;
     }
 
     // Define constants
@@ -288,38 +329,13 @@ int main(int argc, char **argv)
     printf("x from [%.2f,%.2f], y from [%.2f,%.2f]\n",
             gmin.x, gmax.x, gmin.y, gmax.y);
 
-    if (g_fscale)
-    {
-        std::stringstream scaled_eq;
-        size_t index = 0;
-        for (size_t i = 0; i < best_fit.eq_display.size(); ++i)
-        {
-            char c = best_fit.eq_display[i];
-            if (c == 'x')
-            {
-                scaled_eq << "((x^{" << best_fit.xpows[index] << "} - "
-                          << best_fit.mean[index]
-                          << ") / " << best_fit.sd[index] << ")";
-                ++index;
-            }
-            else
-            {
-                if (c == '^')
-                {
-                    while (best_fit.eq_display[i++] != '}')
-                        ;
-                }
+    std::string eq_display;
+    if (g_fscale) eq_display = best_fit.to_string(false);
+    else eq_display = best_fit.eq_display;
+    printf("y = %s\n", eq_display.c_str());
 
-                scaled_eq << best_fit.eq_display[i];
-            }
-        }
-
-        printf("y = %s\n", scaled_eq.str().c_str());
-    }
-    else
-    {
-        printf("y = %s\n", best_fit.eq_display.c_str());
-    }
+    if (g_latex && g_fscale)
+        printf("y = %s\n", best_fit.to_string(true).c_str());
 
     float sum_y = 0.f;
     for (const auto &dp : data)
