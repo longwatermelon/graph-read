@@ -1,5 +1,5 @@
 CXX=g++
-CXXFLAGS=-std=c++17 -ggdb -Wall -Og
+CXXFLAGS=-std=c++17 -ggdb -Wall -O2
 INC=-Ideps/include
 LDFLAGS=-Ldeps/lib -lreg
 
