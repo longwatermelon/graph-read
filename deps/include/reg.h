@@ -60,12 +60,21 @@ namespace reg
         // N: num features
         template <size_t N>
         float cost(const std::vector<DataPoint<N>> &data,
-                   const std::function<float(const DataPoint<N>&)> &err_f)
+                   const std::array<float, N> &vw,
+                   const std::function<float(const DataPoint<N>&)> &err_f,
+                   float lambda = 0.f)
         {
             float cost = 0.f;
             for (const auto &p : data)
                 cost += err_f(p);
-            return cost / (2.f * data.size());
+            cost /= 2.f * data.size();
+
+            float reg_term = 0.f;
+            for (const auto &w : vw)
+                reg_term += w * w;
+            reg_term *= lambda / (2.f * data.size());
+
+            return cost + reg_term;
         }
 
         // N: num features
@@ -75,7 +84,8 @@ namespace reg
                      const std::vector<DataPoint<N>> &data,
                      const std::function<float(const std::array<float, N>&,
                                                const std::array<float, N>&,
-                                               float)> &func)
+                                               float)> &func,
+                     float lambda = 0.f)
         {
             // Calculate new b
             float db_j = 0.f;
@@ -92,7 +102,7 @@ namespace reg
                 for (size_t i = 0; i < data.size(); ++i)
                     dw_j += (func(vw, data[i].features, b) - data[i].y) * data[i].features[j];
                 dw_j /= data.size();
-                /* printf("%zu: %f\n", j, dw_j); */
+                dw_j += lambda / data.size() * vw[j];
 
                 vw_new[j] = vw[j] - a * dw_j;
             }

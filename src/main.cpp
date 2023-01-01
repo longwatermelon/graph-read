@@ -109,7 +109,7 @@ float fit_eq(Equation<N> &eq, size_t iters, float a, std::vector<reg::DataPoint<
         });
     }
 
-    float cost = reg::general::cost<N>(data,
+    float cost = reg::general::cost<N>(data, eq.vw,
             [eq, f_xraise](const reg::DataPoint<N> &dp){
         /* printf("x %f predict %f y %f\n", dp.features[0], reg::general::dot(eq.vw, g_fscale ? dp.features : f_xraise(dp.features)) + eq.b, dp.y); */
         return std::pow((reg::general::dot(eq.vw, g_fscale ? dp.features : f_xraise(dp.features)) + eq.b) - dp.y, 2);
