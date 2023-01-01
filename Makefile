@@ -1,7 +1,7 @@
 CXX=g++
 CXXFLAGS=-std=c++17 -ggdb -Wall -O2
 INC=-Ideps/include
-LDFLAGS=-Ldeps/lib -lreg
+LDFLAGS=-Ldeps/lib -lreg -lgraph -lSDL2
 
 SRC=$(wildcard src/*.cpp)
 OBJS=$(addprefix obj/, $(SRC:.cpp=.o))

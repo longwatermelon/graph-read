@@ -1,5 +1,13 @@
 #include <sstream>
+#include <fstream>
 #include <reg.h>
+#include <graph2.h>
+
+#define GRAPHICS
+
+#ifdef GRAPHICS
+#include <SDL2/SDL.h>
+#endif
 
 extern "C" {
 #define STB_IMAGE_IMPLEMENTATION
@@ -12,6 +20,9 @@ extern "C" {
 bool g_verbose = false;
 bool g_fscale = false;
 bool g_latex = false;
+bool g_graph = false;
+
+glm::vec2 g_gmin(0.f), g_gmax(0.f);
 
 template <size_t N>
 struct Equation
@@ -35,50 +46,6 @@ struct Equation
     std::array<float, N> vw, vx;
     std::array<float, N> xpows;
     float b{ 0.f };
-
-private:
-    std::string reduce_str(const std::string &repr) const
-    {
-        // pow: coeff
-        std::unordered_map<float, float> pow_coeffs;
-        for (size_t i = 0; i < N; ++i)
-            pow_coeffs[xpows[i]] = 0.f;
-
-        std::stringstream ss(repr);
-        for (size_t i = 0; i < N; ++i)
-        {
-            char tmp;
-            float coeff;
-            float pow;
-            ss >> coeff >> tmp >> tmp >> pow >> tmp;
-            pow_coeffs[pow] += coeff;
-        }
-
-        std::stringstream ssout;
-        for (const auto &[pow, coeff] : pow_coeffs)
-        {
-            if (std::abs(coeff) > 1e-4f)
-            {
-                if (std::abs(coeff - 1.f) > 1e-2f)
-                    ssout << coeff;
-                ssout << 'x';
-
-                if ((int)pow != 1)
-                    ssout << '^' << '{' << pow << '}';
-                ssout << " + ";
-            }
-        }
-
-        if (std::abs(b) > 1e-3f)
-            ssout << b;
-
-        std::string res = ssout.str();
-
-        if (res[res.size() - 1] == ' ')
-            res = res.substr(0, res.size() - 3);
-
-        return res;
-    }
 };
 
 bool load_image(std::vector<std::array<unsigned char, 3>> &image, const std::string &path, int &x, int &y)
@@ -150,6 +117,34 @@ float fit_eq(Equation<N> &eq, size_t iters, float a, std::vector<reg::DataPoint<
 
     if (g_verbose)
         printf("Fit %s: Cost = %f\n", eq.to_string().c_str(), std::sqrt(cost));
+
+#ifdef GRAPHICS
+    float min_x = std::numeric_limits<float>::max(),
+          max_x = std::numeric_limits<float>::min();
+
+    for (const auto &dp : data)
+    {
+        if (dp.features[0] < min_x) min_x = dp.features[0];
+        if (dp.features[0] > max_x) max_x = dp.features[0];
+    }
+
+    std::stringstream graph_config;
+    graph_config << "min " << min_x << ' ' << g_gmin.y
+                 << "\nmax " << max_x << ' ' << g_gmax.y
+                 << "\nstep " << (g_gmax.x - g_gmin.x) / 5.f
+                 << ' ' << (g_gmax.y - g_gmin.y) / 5.f << "\n";
+    for (const auto &dp : data)
+    {
+        float prediction = reg::general::dot(eq.vw, g_fscale ? dp.features : f_xraise(dp.features)) + eq.b;
+        graph_config << "data " << dp.features[0] << ' ' << prediction << " 0\n";
+        graph_config << "data " << dp.features[0] << ' ' << dp.y << " 1\n";
+    }
+
+    std::string graph_name = "graphs/" + std::to_string((int)eq.xpows[eq.xpows.size() - 1]);
+    std::ofstream ofs(graph_name);
+    ofs << graph_config.str();
+    ofs.close();
+#endif
 
     return std::sqrt(cost);
 }
@@ -271,8 +266,6 @@ int main(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
 
-    glm::vec2 gmin(0.f, 0.f),
-              gmax(1.f, 1.f);
     for (int i = 2; i < argc; ++i)
     {
         if (strcmp(argv[i], "-v") == 0)
@@ -285,11 +278,14 @@ int main(int argc, char **argv)
         {
             std::stringstream ss(argv[++i]);
             char c;
-            ss >> gmin.x >> c >> gmin.y >> c >> gmax.x >> c >> gmax.y;
+            ss >> g_gmin.x >> c >> g_gmin.y >> c >> g_gmax.x >> c >> g_gmax.y;
         }
 
         if (strcmp(argv[i], "-latex") == 0)
             g_latex = true;
+
+        if (strcmp(argv[i], "-graph") == 0)
+            g_graph = true;
     }
 
     // Define constants
@@ -312,8 +308,8 @@ int main(int argc, char **argv)
                 while (y + i < h && IS_BLACK(imgdata[x + (y + i) * w]))
                     ++i;
                 int middle_y = y + i / 2;
-                float gx = (float)(x) / (w - 1) * (gmax.x - gmin.x) + gmin.x;
-                float gy = (1.f - (float)(middle_y) / (h - 1)) * (gmax.y - gmin.y) + gmin.y;
+                float gx = (float)(x) / (w - 1) * (g_gmax.x - g_gmin.x) + g_gmin.x;
+                float gy = (1.f - (float)(middle_y) / (h - 1)) * (g_gmax.y - g_gmin.y) + g_gmin.y;
 
                 reg::DataPoint<max_terms> dp;
                 dp.features.fill(gx);
@@ -327,7 +323,7 @@ int main(int argc, char **argv)
     // Find best fit graph out of all possible polynomials
     BestFitInfo best_fit = find_best_fit<max_terms>(data);
     printf("x from [%.2f,%.2f], y from [%.2f,%.2f]\n",
-            gmin.x, gmax.x, gmin.y, gmax.y);
+            g_gmin.x, g_gmax.x, g_gmin.y, g_gmax.y);
 
     std::string eq_display;
     if (g_fscale) eq_display = best_fit.to_string(false);
@@ -343,6 +339,69 @@ int main(int argc, char **argv)
     sum_y = std::sqrt(sum_y / data.size());
 
     printf("Accuracy: %f%% | Cost: %f\n", (1.f - best_fit.cost / sum_y) * 100.f, best_fit.cost);
+
+    if (g_graph)
+    {
+        SDL_Init(SDL_INIT_VIDEO);
+        SDL_Window *win = SDL_CreateWindow("Graph",
+                SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+                800, 800, SDL_WINDOW_SHOWN);
+        SDL_Renderer *rend = SDL_CreateRenderer(win, -1,
+                SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+
+        size_t i = eq_display.find_last_of("^");
+        std::stringstream ss(eq_display.substr(i, eq_display.size() - i));
+        char tmp;
+        int pow;
+        ss >> tmp >> tmp >> pow;
+
+        std::string filename = "graphs/" + std::to_string(pow);
+        printf("%s\n", filename.c_str());
+        graph::Graph2 graph(filename);
+        graph.add_shape(graph::Graph2Shape(
+            {
+                { 0.f, 0.f }, { 1.f, 1.f },
+                { 1.f, 0.f }, { 0.f, 1.f }
+            },
+            { 1.f, 0.f, 0.f }
+        ));
+        graph.add_shape(graph::Graph2Shape(
+            {
+                { .5f, 0.f }, { 0.f, 1.f },
+                { .5f, 0.f }, { 1.f, 1.f },
+                { 0.f, 1.f }, { 1.f, 1.f }
+            },
+            { 0.f, .5f, 1.f }
+        ));
+        graph.set_shape_size(4.f);
+
+        bool running = true;
+        SDL_Event evt;
+
+        while (running)
+        {
+            while (SDL_PollEvent(&evt))
+            {
+                switch (evt.type)
+                {
+                case SDL_QUIT:
+                    running = false;
+                    break;
+                }
+            }
+
+            SDL_RenderClear(rend);
+
+            graph.render(rend, { 0, 0, 800, 800 }, [](float x){ return 0.f; });
+
+            SDL_SetRenderDrawColor(rend, 0, 0, 0, 255);
+            SDL_RenderPresent(rend);
+        }
+
+        SDL_DestroyRenderer(rend);
+        SDL_DestroyWindow(win);
+        SDL_Quit();
+    }
 
     return 0;
 }
