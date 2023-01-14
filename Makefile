@@ -10,10 +10,6 @@ OBJS=$(addprefix obj/, $(SRC:.cpp=.o))
 
 all: dirs target
 
-graphics: CXXFLAGS+=-DGRAPHICS
-graphics: LDFLAGS+=-lgraph -lSDL2
-graphics: dirs target
-
 target: $(OBJS)
 	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS)
 

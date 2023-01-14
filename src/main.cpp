@@ -2,11 +2,6 @@
 #include <fstream>
 #include <reg.h>
 
-#ifdef GRAPHICS
-#include <SDL2/SDL.h>
-#include <graph2.h>
-#endif
-
 extern "C" {
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
@@ -17,7 +12,6 @@ extern "C" {
 
 bool g_verbose = false;
 bool g_fscale = false;
-bool g_latex = false;
 bool g_graph = false;
 
 glm::vec2 g_gmin(0.f), g_gmax(0.f);
@@ -217,41 +211,27 @@ struct BestFitInfo
 #endif
     }
 
-    std::string to_string(bool latex)
+    std::string to_string() const
     {
-        std::stringstream scaled_eq;
+        std::stringstream res;
+        std::stringstream ss(eq_display);
+        float w, accum = 0.f;
         size_t index = 0;
-        for (size_t i = 0; i < eq_display.size(); ++i)
-        {
-            char c = eq_display[i];
-            if (c == 'x')
-            {
-                if (latex)
-                {
-                    scaled_eq << "\\frac{x^{" << xpows[index] << "} - "
-                              << mean[index] << "}{" << sd[index] << "}";
-                }
-                else
-                {
-                    scaled_eq << "((x^{" << xpows[index] << "} - "
-                              << mean[index]
-                              << ") / " << sd[index] << ")";
-                }
-                ++index;
-            }
-            else
-            {
-                if (c == '^')
-                {
-                    while (eq_display[i++] != '}')
-                        ;
-                }
 
-                scaled_eq << eq_display[i];
-            }
+        while (true)
+        {
+            char c;
+            int i;
+            ss >> w >> c >> c >> c >> i >> c >> c;
+            if (ss.fail())
+                break;
+            res << w / sd[index] << "x^" << xpows[index] << " + ";
+            accum -= w * mean[index] / sd[index];
+            ++index;
         }
 
-        return scaled_eq.str();
+        res << w + accum;
+        return res.str();
     }
 
     std::string eq_display;
@@ -310,9 +290,6 @@ int main(int argc, char **argv)
             ss >> g_gmin.x >> c >> g_gmin.y >> c >> g_gmax.x >> c >> g_gmax.y;
         }
 
-        if (strcmp(argv[i], "-latex") == 0)
-            g_latex = true;
-
         if (strcmp(argv[i], "-graph") == 0)
             g_graph = true;
     }
@@ -355,12 +332,9 @@ int main(int argc, char **argv)
             g_gmin.x, g_gmax.x, g_gmin.y, g_gmax.y);
 
     std::string eq_display;
-    if (g_fscale) eq_display = best_fit.to_string(false);
+    if (g_fscale) eq_display = best_fit.to_string();
     else eq_display = best_fit.eq_display;
     printf("y = %s\n", eq_display.c_str());
-
-    if (g_latex && g_fscale)
-        printf("y = %s\n", best_fit.to_string(true).c_str());
 
     float sum_y = 0.f;
     for (const auto &dp : data)
@@ -368,70 +342,6 @@ int main(int argc, char **argv)
     sum_y = std::sqrt(sum_y / data.size());
 
     printf("Accuracy: %f%% | Cost: %f\n", (1.f - best_fit.cost / sum_y) * 100.f, best_fit.cost);
-
-#ifdef GRAPHICS
-    if (g_graph)
-    {
-        SDL_Init(SDL_INIT_VIDEO);
-        SDL_Window *win = SDL_CreateWindow("Graph",
-                SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-                800, 800, SDL_WINDOW_SHOWN);
-        SDL_Renderer *rend = SDL_CreateRenderer(win, -1,
-                SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-
-        size_t i = eq_display.find_last_of("^");
-        std::stringstream ss(eq_display.substr(i, eq_display.size() - i));
-        char tmp;
-        int pow;
-        ss >> tmp >> tmp >> pow;
-
-        std::string filename = "graphs/" + std::to_string(pow);
-        graph::Graph2 graph(filename);
-        graph.add_shape(graph::Graph2Shape(
-            {
-                { 0.f, 0.f }, { 1.f, 1.f },
-                { 1.f, 0.f }, { 0.f, 1.f }
-            },
-            { 1.f, 0.f, 0.f }
-        ));
-        graph.add_shape(graph::Graph2Shape(
-            {
-                { .5f, 0.f }, { 0.f, 1.f },
-                { .5f, 0.f }, { 1.f, 1.f },
-                { 0.f, 1.f }, { 1.f, 1.f }
-            },
-            { 0.f, .5f, 1.f }
-        ));
-        graph.set_shape_size(4.f);
-
-        bool running = true;
-        SDL_Event evt;
-
-        while (running)
-        {
-            while (SDL_PollEvent(&evt))
-            {
-                switch (evt.type)
-                {
-                case SDL_QUIT:
-                    running = false;
-                    break;
-                }
-            }
-
-            SDL_RenderClear(rend);
-
-            graph.render(rend, { 0, 0, 800, 800 }, [](float x){ return 0.f; });
-
-            SDL_SetRenderDrawColor(rend, 0, 0, 0, 255);
-            SDL_RenderPresent(rend);
-        }
-
-        SDL_DestroyRenderer(rend);
-        SDL_DestroyWindow(win);
-        SDL_Quit();
-    }
-#endif
 
     return 0;
 }
