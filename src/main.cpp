@@ -213,10 +213,10 @@ struct BestFitInfo
 
     std::string to_string() const
     {
-        std::stringstream res;
         std::stringstream ss(eq_display);
         float w, accum = 0.f;
         size_t index = 0;
+        std::vector<std::string> terms;
 
         while (true)
         {
@@ -225,10 +225,22 @@ struct BestFitInfo
             ss >> w >> c >> c >> c >> i >> c >> c;
             if (ss.fail())
                 break;
-            res << w / sd[index] << "x^" << xpows[index] << " + ";
+
+            std::stringstream sstmp;
+            sstmp << w / sd[index] << 'x';
+
+            if (xpows[index] != 1)
+                sstmp << '^' << xpows[index];
+
+            terms.emplace_back(sstmp.str());
+
             accum -= w * mean[index] / sd[index];
             ++index;
         }
+
+        std::stringstream res;
+        for (int i = terms.size() - 1; i >= 0; --i)
+            res << terms[i] << " + ";
 
         res << w + accum;
         return res.str();
